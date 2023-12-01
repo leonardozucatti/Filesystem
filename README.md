@@ -5,7 +5,7 @@ Este projeto consiste em um sistema de arquivos implementado em Python. Ele ofer
 ## Funcionalidades principais
 
 ## 1. Manipulação de Arquivos e Diretórios
-*Criar arquivo: Permite a criação de novos arquivos no sistema.
+Criar arquivo: Permite a criação de novos arquivos no sistema.
 Criar diretório: Facilita a criação de novos diretórios.
 Visualizar arquivos: Mostra o conteúdo de arquivos no sistema.
 Remover diretório: Remove diretórios vazios do sistema.
