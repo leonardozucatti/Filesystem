@@ -1,0 +1,570 @@
+import time
+
+class Inode:
+    def __init__(self, inode_id):
+        self.inode_id = inode_id
+        self.owner = None
+        self.group = None  # Grupo do arquivo
+        self.last_updated = time.time()  # Data de última atualização
+        self.last_accessed = time.time()  # Data do último acesso
+        self.created = time.time()  # Data de criação
+        self.permissions = "rwxrwxrwx"  # Permissões de acesso (padrão para leitura, escrita e execução)
+        self.is_directory = False
+        self.file_size = 0
+        self.block_addresses = [None] * 10
+        self.indirect_block = None
+
+
+class FreeBlockList:
+    def __init__(self, max_blocks):
+        self.max_blocks = max_blocks
+        self.free_blocks = set(range(max_blocks))
+
+
+class DirectoryEntry:
+    def __init__(self, name, inode):
+        self.name = name
+        self.inode = inode
+
+
+class Directory:
+    def __init__(self):
+        self.entries = {}
+
+
+class User:
+    def __init__(self, name, user_id, group_name="default"):
+        self.name = name
+        self.user_id = user_id
+        self.group = group_name
+        self.home_directory = None
+        self.permissions = "rw"
+        self.files = []
+
+class Group:
+    def __init__(self, group_name, permissions):
+        self.group_name = group_name
+        self.permissions = permissions
+        self.users = []  # Inicializa a lista de usuários vazia
+
+class FileSystem:
+    def __init__(self, max_blocks):
+        self.inode_map = {}
+        self.free_blocks = FreeBlockList(max_blocks)
+        self.root_directory = Directory()
+        self.users = {}  # Dicionário de usuários
+        self.groups = {}  # Dicionário de grupos
+        self.create_group("default", "rw")
+
+    def get_inode_info(self, inode_id):
+        if inode_id in self.inode_map:
+            inode = self.inode_map[inode_id]
+            print(f"Inode ID: {inode.inode_id}")
+            print(f"Proprietário (ID): {inode.owner}")
+            print(f"Data última atualização: {time.ctime(inode.last_updated)}")
+            print(f"Data último acesso: {time.ctime(inode.last_accessed)}")
+            print(f"Data de criação: {time.ctime(inode.created)}")
+            print(f"Direito de acesso: {inode.permissions}")
+            print(f"Tipo: {'Diretório' if inode.is_directory else 'Arquivo'}")
+            print(f"Tamanho do Arquivo: {inode.file_size} bytes")
+        else:
+            print("Inode não encontrado.")
+
+    def list_directory_structure(self, directory_name):
+        directory = self.get_directory_entries(directory_name)
+        if directory is None:
+            if not directory_name:
+                print("Conteúdo do diretório raiz:")
+            else:
+                print(f"Diretório '{directory_name}' não encontrado.")
+            return
+
+        print(f"Estrutura do diretório '{directory_name}':")
+        for name, entry in directory.entries.items():
+            print(f"Nome: {name}, Inode: {entry.inode}")
+    
+    def create_user(self, name, user_id, group_name):
+        if name in self.users:
+            print(f"O usuário '{name}' já existe.")
+            return
+        
+        new_user = User(name, user_id, group_name)
+        if group_name in self.groups:
+            new_user.group = group_name
+            self.groups[group_name].users.append(name)
+        else:
+            print(f"O grupo '{group_name}' não existe. O usuário '{name}' será criado sem um grupo.")
+
+        self.users[name] = new_user
+        print(f"Usuário '{name}' criado.")
+
+    def delete_user(self, name):
+        if name not in self.users:
+            print(f"Usuário '{name}' não encontrado.")
+            return
+        del self.users[name]
+        print(f"Usuário '{name}' removido.")
+
+    def create_group(self, group_name, permissions):
+        if group_name in self.groups:
+            print(f"O grupo '{group_name}' já existe.")
+            return
+
+        self.groups[group_name] = Group(group_name, permissions)
+        print(f"Grupo '{group_name}' criado com permissões '{permissions}'.")
+
+    def delete_group(self, group_name):
+        if group_name not in self.groups:
+            print(f"Grupo '{group_name}' não encontrado.")
+            return
+        del self.groups[group_name]
+        print(f"Grupo '{group_name}' removido.")
+
+    def add_user_to_group(self, username, group_name):
+        if username not in self.users:
+            print(f"Usuário '{username}' não encontrado.")
+            return
+        if group_name not in self.groups:
+            print(f"Grupo '{group_name}' não encontrado.")
+            return
+        self.users[username].group = group_name
+        self.groups[group_name].append(username)
+        print(f"Usuário '{username}' adicionado ao grupo '{group_name}'.")
+
+    def remove_user_from_group(self, username, group_name):
+        if username not in self.users:
+            print(f"Usuário '{username}' não encontrado.")
+            return
+        if group_name not in self.groups:
+            print(f"Grupo '{group_name}' não encontrado.")
+            return
+        if username in self.groups[group_name]:
+            self.groups[group_name].remove(username)
+            print(f"Usuário '{username}' removido do grupo '{group_name}'.")
+        else:
+            print(f"Usuário '{username}' não está no grupo '{group_name}'.")
+
+    def set_group_permissions(self, group_name, permissions):
+        if group_name not in self.groups:
+            print(f"Grupo '{group_name}' não encontrado.")
+            return
+        self.groups[group_name].permissions = permissions
+        print(f"As permissões para o grupo '{group_name}' foram alteradas para '{permissions}'.")
+
+    def visualize_groups(self):
+        print("Grupos existentes:")
+        for group_name, group in self.groups.items():
+            print(f"{group_name}: {group.permissions}")
+            if group.users:
+                print(f"Usuários no grupo {group_name}: {', '.join(group.users)}")
+            else:
+                print("Nenhum usuário no grupo.")
+
+    def format(self):
+        self.inode_map = {}
+        self.free_blocks = FreeBlockList(self.free_blocks.max_blocks)
+        self.root_directory = Directory()
+        print("Sistema de arquivos formatado.")
+
+    def touch(self, name, user):
+        parts = name.split("/")
+        file_name = parts[-1]
+        directory_name = "/".join(parts[:-1])
+
+        if directory_name:  # Se um diretório for fornecido no caminho
+            self.create_directory(directory_name, user)  # Verifica se o diretório existe e cria se não existir
+
+        if file_name in self.root_directory.entries:
+            print("Arquivo já existe.")
+            return
+
+        new_inode_id = len(self.inode_map)
+        new_inode = Inode(new_inode_id)
+        new_inode.owner = user
+        new_inode.is_directory = False
+        self.inode_map[new_inode_id] = new_inode
+
+        new_entry = DirectoryEntry(file_name, new_inode_id)
+        # Adiciona o arquivo diretamente ao diretório raiz se nenhum diretório for especificado
+        if not directory_name:  # Se nenhum diretório especificado
+            self.root_directory.entries[file_name] = new_entry
+        else:
+            # Se o diretório não existir, cria o diretório
+            if directory_name not in self.root_directory.entries:
+                print(f"Diretório '{directory_name}' não encontrado.")
+                return
+            directory = self.get_directory_entries(directory_name)
+            directory.entries[file_name] = new_entry
+        print(f"Arquivo '{file_name}' criado.")
+
+    def cat(self, name):
+        if name in self.root_directory.entries:
+            inode_id = self.root_directory.entries[name].inode
+            if self.inode_map[inode_id].is_directory:
+                print(f"'{name}' é um diretório.")
+            else:
+                print(f"Conteúdo de '{name}': (neste exemplo, vazio)")
+        else:
+            print(f"Arquivo '{name}' não encontrado.")
+
+    def change_owner(self, file_name, new_owner, user):
+        if file_name not in self.root_directory.entries:
+            print(f"Arquivo '{file_name}' não encontrado.")
+            return
+
+        inode_id = self.root_directory.entries[file_name].inode
+        inode = self.inode_map[inode_id]
+
+        # Verifica se o usuário tem permissão para alterar o proprietário do arquivo
+        if user != inode.owner and user != 'admin':
+            print("Permissão negada.")
+            return
+
+        # Altera o proprietário do arquivo
+        inode.owner = new_owner
+        print(f"O proprietário de '{file_name}' foi alterado para '{new_owner}'.")
+
+    def change_permissions(self, file_name, permissions, user):
+        if file_name not in self.root_directory.entries:
+            print(f"Arquivo '{file_name}' não encontrado.")
+            return
+
+        inode_id = self.root_directory.entries[file_name].inode
+        inode = self.inode_map[inode_id]
+
+        # Verifica se o usuário tem permissão de alterar as permissões do arquivo
+        if user != inode.owner:
+            print("Permissão negada.")
+            return
+
+        # Altera as permissões do arquivo
+        inode.permissions = permissions
+        print(f"As permissões de '{file_name}' foram alteradas para '{permissions}'.")
+
+    def visualize_files(self, directory_name):
+        directory = self.get_directory_entries(directory_name)
+        if directory is None:
+            if not directory_name:
+                print("Conteúdo do diretório raiz:")
+            else:
+                print(f"Diretório '{directory_name}' não encontrado.")
+            return
+
+        print(f"Visualização do diretório '{directory_name}':")
+        for name, entry in directory.entries.items():
+            inode = self.inode_map[entry.inode]
+            file_type = "Diretório" if inode.is_directory else "Arquivo"
+            print(f"{name} ({file_type})")
+
+    def create_directory(self, directory_name, user):
+        if directory_name in self.root_directory.entries:
+            print("Diretório já existe.")
+            return
+
+        new_inode_id = len(self.inode_map)
+        new_inode = Inode(new_inode_id)
+        new_inode.owner = user
+        new_inode.is_directory = True
+        self.inode_map[new_inode_id] = new_inode
+
+        new_entry = DirectoryEntry(directory_name, new_inode_id)
+        self.root_directory.entries[directory_name] = new_entry
+        print(f"Diretório '{directory_name}' criado.")
+
+    def remove_directory(self, directory_name, user):
+        if directory_name not in self.root_directory.entries:
+            print(f"Diretório '{directory_name}' não encontrado.")
+            return
+
+        inode_id = self.root_directory.entries[directory_name].inode
+        inode = self.inode_map[inode_id]
+
+        # Verifica se o usuário tem permissão para remover o diretório
+        if user != inode.owner:
+            print("Permissão negada.")
+            return
+
+        # Remove o diretório se estiver vazio
+        if not inode.is_directory:
+            print(f"'{directory_name}' não é um diretório.")
+            return
+
+        if self.get_directory_entries(directory_name):
+            print(f"Diretório '{directory_name}' não está vazio.")
+            return
+
+        del self.root_directory.entries[directory_name]
+        del self.inode_map[inode_id]
+        print(f"Diretório '{directory_name}' removido.")
+
+    def get_directory_entries(self, directory_name):
+        if not directory_name:  # Se nenhum nome de diretório foi especificado
+            directory_name = ''  # Define para vazio para representar o diretório raiz
+
+        if directory_name not in self.root_directory.entries:
+            return None
+
+        inode_id = self.root_directory.entries[directory_name].inode
+        inode = self.inode_map[inode_id]
+        if not inode.is_directory:
+            return None
+
+        directory = Directory()
+        directory.entries = {name: entry for name, entry in self.root_directory.entries.items()
+                             if isinstance(self.root_directory.entries[name].inode, int) and name != directory_name}
+        return directory
+
+    def list_users(self):
+        print("\n=== Lista de Usuários ===")
+        for username, user in self.users.items():
+            print(f"Usuário: {username}")
+            print(f"ID do Usuário: {user.user_id}")
+            print(f"Grupo: {user.group}")
+            print(f"Arquivos Criados: {', '.join(user.files)}")  # Exibe os arquivos criados pelo usuário
+            if user.group in self.groups:
+                print(f"Permissões do Grupo: {self.groups[user.group].permissions}")  # Permissões do grupo
+            else:
+                print("Usuário sem grupo associado.")
+            print(f"Permissões: {user.permissions}")  # Permissões do usuário
+
+    def move_file(self, file_name, new_directory_name, user):
+        if file_name not in self.root_directory.entries:
+            print(f"Arquivo '{file_name}' não encontrado.")
+            return
+
+        file_entry = self.root_directory.entries[file_name]
+        file_inode = self.inode_map[file_entry.inode]
+
+        # Verifica se o usuário tem permissão para mover o arquivo
+        if user != file_inode.owner:
+            print("Permissão negada.")
+            return
+
+        # Remove o arquivo do diretório atual
+        del self.root_directory.entries[file_name]
+
+        # Move o arquivo para o novo diretório
+        new_directory = self.get_directory_entries(new_directory_name)
+        if new_directory is None:
+            print(f"Diretório '{new_directory_name}' não encontrado.")
+            self.root_directory.entries[file_name] = file_entry  # Restaura o arquivo no diretório original
+            return
+
+        new_directory.entries[file_name] = file_entry
+        print(f"Arquivo '{file_name}' movido para o diretório '{new_directory_name}'.")
+
+    def edit_user(self, username, group_name):
+        if username not in self.users:
+            print(f"Usuário '{username}' não encontrado.")
+            return
+
+        user = self.users[username]
+        if group_name not in self.groups:
+            print(f"O grupo '{group_name}' não existe.")
+            return
+
+        if user.group != group_name:
+            # Remover o usuário do grupo anterior se houver um grupo associado
+            if user.group in self.groups:
+                self.groups[user.group].users.remove(username)
+            
+            user.group = group_name
+            self.groups[group_name].users.append(username)
+            print(f"Usuário '{username}' adicionado ao grupo '{group_name}'.")
+        else:
+            print(f"Usuário '{username}' já está no grupo '{group_name}'.")
+
+    def list_inodes(self, directory_name):
+        directory = self.get_directory_entries(directory_name)
+        if directory is None:
+            if not directory_name:
+                print("Conteúdo do diretório raiz:")
+            else:
+                print(f"Diretório '{directory_name}' não encontrado.")
+            return
+
+        print(f"Lista de Inodes no diretório '{directory_name}':")
+        for name, entry in directory.entries.items():
+            inode_id = entry.inode
+            inode = self.inode_map[inode_id]
+
+            file_type = "Diretório" if inode.is_directory else "Arquivo"
+            owner = self.users[inode.owner].name if inode.owner in self.users else "Desconhecido"
+            permissions = inode.permissions
+            created = time.ctime(inode.created)
+            last_updated = time.ctime(inode.last_updated)
+            file_size = inode.file_size
+
+            print(f"Nome: {name}, Tipo: {file_type}, Proprietário: {owner}, "
+                f"Permissões: {permissions}, Criado: {created}, Atualizado: {last_updated}, "
+                f"Tamanho: {file_size} bytes")
+
+    def write_to_file(self, filename, content, user):
+        if filename not in self.root_directory.entries:
+            print(f"Arquivo '{filename}' não encontrado.")
+            return
+
+        file_entry = self.root_directory.entries[filename]
+        file_inode = self.inode_map[file_entry.inode]
+
+        # Verifica se o usuário tem permissão para escrever no arquivo
+        if user != file_inode.owner:
+            print("Permissão negada para escrever no arquivo.")
+            return
+
+        inode_id = file_entry.inode
+        inode = self.inode_map[inode_id]
+
+        # Escreve o conteúdo no arquivo
+        inode.file_size = len(content.encode('utf-8'))  # Define o tamanho do arquivo
+        print(f"Conteúdo de '{filename}' escrito com sucesso.")
+
+    def read_file(self, filename):
+        if filename not in self.root_directory.entries:
+            print(f"Arquivo '{filename}' não encontrado.")
+            return
+
+        file_entry = self.root_directory.entries[filename]
+        file_inode = self.inode_map[file_entry.inode]
+
+        # Lê o conteúdo do arquivo
+        inode_id = file_entry.inode
+        inode = self.inode_map[inode_id]
+        content = f"Conteúdo de '{filename}': (neste exemplo, vazio)"  # Inicializa com um exemplo vazio
+        if not inode.is_directory:
+            content = f"Conteúdo de '{filename}': (neste exemplo, algo interessante)"  # Simula conteúdo real
+
+        print(content)
+        print(f"Tamanho máximo do arquivo '{filename}': {inode.file_size} bytes")
+
+def main():
+    file_system = FileSystem(max_blocks=65536)
+    file_system.create_group("admin_group", "rwx")  # Criando o grupo admin_group com permissões rwx
+    file_system.create_user("admin", 0, "admin_group")  # Criando usuário admin
+    file_system.format()  # Formata o sistema de arquivos
+
+    while True:
+        print("\n=== Sistema de Arquivos ===")
+        print("1. Criar usuário")
+        print("2. Criar arquivo")
+        print("3. Criar diretório")
+        print("4. Visualizar arquivos")
+        print("5. Mudar proprietário de arquivo")
+        print("6. Mudar permissões de arquivo")
+        print("7. Remover diretório")
+        print("8. Mudar diretório de arquivo")
+        print("9. Criar grupo")
+        print("10. Remover grupo")
+        print("11. Definir permissões para grupo")
+        print("12. Visualizar grupos")
+        print("13. Listar usuários")
+        print("14. Editar usuário")
+        print("15. Visualizar informações do Inode")
+        print("16. Listar estrutura de diretórios")
+        print("17. Listar Inodes")
+        print("18. Escrever no arquivo")
+        print("19. Ler arquivo")
+        print("20. Sair")
+        
+        choice = input("Escolha uma opção: ")
+
+        if choice == "1":
+            username = input("Digite o nome do novo usuário: ")
+            user_id = int(input("Digite o ID do novo usuário: "))
+            group_name = input("Digite o nome do grupo para o novo usuário: ")
+            file_system.create_user(username, user_id, group_name)
+
+        elif choice == "2":
+            filename = input("Digite o nome do novo arquivo: ")
+            user = input("Digite o nome do usuário que está criando o arquivo: ")
+            file_system.touch(filename, file_system.users.get(user, None))
+
+        elif choice == "3":
+            directory_name = input("Digite o nome do novo diretório: ")
+            user = input("Digite o nome do usuário que está criando o diretório: ")
+            file_system.create_directory(directory_name, file_system.users.get(user, None))
+
+        elif choice == "4":
+            directory_name = input("Digite o nome do diretório (deixe em branco para o diretório raiz): ")
+            file_system.visualize_files(directory_name if directory_name else '')
+
+        elif choice == "5":
+            filename = input("Digite o nome do arquivo: ")
+            new_owner = input("Digite o novo proprietário: ")
+            user = input("Digite o nome do usuário que está realizando a mudança: ")
+            file_system.change_owner(filename, new_owner, user)
+
+        elif choice == "6":
+            filename = input("Digite o nome do arquivo: ")
+            permissions = input("Digite as novas permissões (ex: rwxrwxrwx): ")
+            user = input("Digite o nome do usuário que está realizando a mudança: ")
+            file_system.change_permissions(filename, permissions, user)
+
+        elif choice == "7":
+            directory_name = input("Digite o nome do diretório a ser removido: ")
+            user = input("Digite o nome do usuário que está removendo o diretório: ")
+            file_system.remove_directory(directory_name, file_system.users.get(user, None))
+        
+        elif choice == "8":
+            file_name = input("Digite o nome do arquivo: ")
+            new_directory_name = input("Digite o novo nome do diretório: ")
+            user = input("Digite o nome do usuário que está movendo o arquivo: ")
+            file_system.move_file(file_name, new_directory_name, file_system.users.get(user, None))
+
+        elif choice == "9":
+            group_name = input("Digite o nome do novo grupo: ")
+            permissions = input("Digite as permissões para o grupo (ex: rwx): ")
+            file_system.create_group(group_name, permissions)
+
+        elif choice == "10":
+            group_name = input("Digite o nome do grupo a ser removido: ")
+            file_system.delete_group(group_name)
+
+        elif choice == "11":
+            group_name = input("Digite o nome do grupo: ")
+            permissions = input("Digite as novas permissões para o grupo (ex: rwxr-x---): ")
+            file_system.set_group_permissions(group_name, permissions)
+
+        elif choice == "12":
+            file_system.visualize_groups()
+
+        elif choice == "13":
+            file_system.list_users()
+
+        elif choice == "14":
+            username = input("Digite o nome do usuário: ")
+            group_name = input("Digite o nome do grupo: ")
+            file_system.edit_user(username, group_name)
+
+        elif choice == "15":
+            inode_id = int(input("Digite o ID do Inode: "))
+            file_system.get_inode_info(inode_id)
+
+        elif choice == "16":
+            directory_name = input("Digite o nome do diretório (deixe em branco para o diretório raiz): ")
+            file_system.list_directory_structure(directory_name if directory_name else '')
+
+        elif choice == "17":
+            directory_name = input("Digite o nome do diretório (deixe em branco para o diretório raiz): ")
+            file_system.list_inodes(directory_name if directory_name else '')
+
+        elif choice == "18":
+            filename = input("Digite o nome do arquivo para escrever: ")
+            content = input("Digite o conteúdo para escrever no arquivo: ")
+            user = input("Digite o nome do usuário que está escrevendo no arquivo: ")
+            file_system.write_to_file(filename, content, file_system.users.get(user, None))
+
+        elif choice == "19":
+            filename = input("Digite o nome do arquivo para ler: ")
+            file_system.read_file(filename)
+        
+        elif choice == "20":
+            print("Saindo do sistema de arquivos.")
+            break
+
+        else:
+            print("Opção inválida. Tente novamente.")
+
+
+if __name__ == "__main__":
+    main()
