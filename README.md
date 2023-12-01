@@ -1,6 +1,6 @@
 ## Sistema de Arquivos UNIX em Python
 
-Este projeto consiste em um sistema de arquivos simples implementado em Python. Ele oferece funcionalidades de manipulação de arquivos e diretórios, gerenciamento de usuários e grupos, além de operações como criar, ler, escrever e mover arquivos e diretórios.
+Este projeto consiste em um sistema de arquivos implementado em Python. Ele oferece funcionalidades de manipulação de arquivos e diretórios, gerenciamento de usuários e grupos, além de operações como criar, ler, escrever e mover arquivos e diretórios.
 
 ## Funcionalidades principais
 
